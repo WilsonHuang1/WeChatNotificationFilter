@@ -1,22 +1,30 @@
 package com.example.wechatnotificationfilter;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
+import org.json.JSONException;
+import org.json.JSONObject;
+import android.util.Log;
 
 public class MainActivity extends AppCompatActivity {
     private EditText contactInput;
@@ -24,6 +32,10 @@ public class MainActivity extends AppCompatActivity {
     private ArrayList<String> contacts;
     private ArrayAdapter<String> adapter;
     private SharedPreferences prefs;
+    private JSONObject contactSounds;
+
+    private static final int PICK_RINGTONE_REQUEST = 1;
+    private String currentContact;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +66,9 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences("PriorityContacts", MODE_PRIVATE);
         Set<String> savedContacts = prefs.getStringSet("contacts", new HashSet<>());
         contacts = new ArrayList<>(savedContacts);
+
+        // Load contact sounds
+        loadContactSounds();
 
         // Set up adapter
         adapter = new ArrayAdapter<>(this,
@@ -90,6 +105,66 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(MainActivity.this, "Contact removed", Toast.LENGTH_SHORT).show();
             return true;
         });
+
+        // Click to set custom sound
+        contactsList.setOnItemClickListener((parent, view, position, id) -> {
+            Toast.makeText(MainActivity.this, "Tapped: " + contacts.get(position), Toast.LENGTH_SHORT).show();
+            currentContact = contacts.get(position);
+            Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION);
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Sound for " + currentContact);
+
+            try {
+                if (contactSounds.has(currentContact)) {
+                    String soundUri = contactSounds.getString(currentContact);
+                    if (!soundUri.isEmpty()) {
+                        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(soundUri));
+                    }
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            startActivityForResult(intent, PICK_RINGTONE_REQUEST);
+        });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == PICK_RINGTONE_REQUEST) {
+            if (resultCode == Activity.RESULT_OK) {
+                Uri ringtoneUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+                if (ringtoneUri != null) {
+                    // Log the selected URI
+                    String uriString = ringtoneUri.toString();
+                    Log.d("WeChatFilter", "Selected sound URI: " + uriString + " for contact: " + currentContact);
+
+                    // Save the selected sound for this contact
+                    try {
+                        contactSounds.put(currentContact, uriString);
+                        saveContactSounds();
+                        WeChatNotificationService.saveContactSound(this, currentContact, uriString);
+                        Toast.makeText(this, "Sound set for " + currentContact + ": " + uriString, Toast.LENGTH_LONG).show();
+
+                        // Force reload the service to pick up the new sound
+                        Intent serviceIntent = new Intent(this, WeChatNotificationService.class);
+                        stopService(serviceIntent);
+                        startService(serviceIntent);
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                        Toast.makeText(this, "Error saving sound", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Log.d("WeChatFilter", "No ringtone selected (null URI)");
+                    Toast.makeText(this, "No sound selected", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Log.d("WeChatFilter", "Sound selection canceled");
+                Toast.makeText(this, "Sound selection canceled", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void sendTestNotification(String contactName) {
@@ -135,5 +210,26 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences.Editor editor = prefs.edit();
         editor.putStringSet("contacts", new HashSet<>(contacts));
         editor.apply();
+    }
+
+    private void loadContactSounds() {
+        SharedPreferences soundPrefs = getSharedPreferences("ContactSounds", MODE_PRIVATE);
+        String soundsJson = soundPrefs.getString("soundsMap", "{}");
+
+        try {
+            contactSounds = new JSONObject(soundsJson);
+        } catch (JSONException e) {
+            contactSounds = new JSONObject();
+        }
+    }
+
+    private void saveContactSounds() {
+        SharedPreferences soundPrefs = getSharedPreferences("ContactSounds", MODE_PRIVATE);
+        SharedPreferences.Editor editor = soundPrefs.edit();
+        editor.putString("soundsMap", contactSounds.toString());
+        editor.apply();
+
+        // Log the saved sounds for debugging
+        Log.d("WeChatFilter", "Saved contact sounds: " + contactSounds.toString());
     }
 }
