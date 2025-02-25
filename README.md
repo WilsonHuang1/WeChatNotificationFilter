@@ -18,9 +18,11 @@ WeChatNotificationFilter helps manage the overwhelming number of WeChat notifica
 - **Notification Filtering**: Automatically filter incoming WeChat notifications based on your preferences
 - **Test Functionality**: Test your notification settings directly from the app
 
-## Screenshots
+## Demo Video
 
-*[Insert screenshots here when available]*
+Click the screenshot below to watch a demonstration of the app in action:
+
+[![WeChatNotificationFilter Demo](proof/Screenshot_20250225-121250.png)](https://drive.google.com/file/d/1-5jfIMjwRMneXZEf2buRRXeqC71NSY_A/view?usp=sharing)
 
 ## Requirements
 
