@@ -19,6 +19,8 @@ import org.json.JSONObject;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
+import android.app.PendingIntent;
+import android.content.Intent;
 
 public class WeChatNotificationService extends NotificationListenerService {
     private Set<String> priorityContacts = new HashSet<>();
@@ -88,18 +90,18 @@ public class WeChatNotificationService extends NotificationListenerService {
             String soundUri = getContactSoundUri(contactName);
             if (soundUri != null && !soundUri.isEmpty()) {
                 Log.d(TAG, "Priority contact - creating notification with sound: " + soundUri);
-                createNotificationWithSound(title, text, contactName, soundUri);
+                createNotificationWithSound(title, text, contactName, soundUri, null);
             } else {
                 Log.d(TAG, "Priority contact - creating notification with default sound");
-                createNotificationWithSound(title, text, contactName, null);
+                createNotificationWithSound(title, text, contactName, null, null);
             }
         } else {
             Log.d(TAG, "Non-priority contact - creating silent notification");
-            createSilentNotification(title, text);
+            createSilentNotification(title, text, null);
         }
     }
 
-    private void createSilentNotification(String title, String text) {
+    private void createSilentNotification(String title, String text, PendingIntent originalPendingIntent) {
         NotificationManager notificationManager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
@@ -134,12 +136,35 @@ public class WeChatNotificationService extends NotificationListenerService {
                 .setContentText(text)
                 .setAutoCancel(true);
 
+        // Create a direct intent to launch WeChat
+        Intent launchWeChat = getPackageManager().getLaunchIntentForPackage(WECHAT_PACKAGE);
+        if (launchWeChat != null) {
+            // Add flags to ensure it launches properly
+            launchWeChat.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            // Create a PendingIntent
+            PendingIntent pendingIntent;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(),
+                        launchWeChat, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            } else {
+                pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(),
+                        launchWeChat, PendingIntent.FLAG_UPDATE_CURRENT);
+            }
+
+            // Set it as the contentIntent
+            builder.setContentIntent(pendingIntent);
+            Log.d(TAG, "Set direct WeChat launch intent for silent notification");
+        } else {
+            Log.e(TAG, "Could not create intent to launch WeChat");
+        }
+
         int notificationId = (title != null) ? title.hashCode() : (int) System.currentTimeMillis();
         notificationManager.notify(notificationId, builder.build());
         Log.d(TAG, "Silent notification posted with ID: " + notificationId);
     }
 
-    private void createNotificationWithSound(String title, String text, String contactName, String customSoundUri) {
+    private void createNotificationWithSound(String title, String text, String contactName, String customSoundUri, PendingIntent originalPendingIntent) {
         NotificationManager notificationManager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
@@ -201,6 +226,29 @@ public class WeChatNotificationService extends NotificationListenerService {
                 .setContentTitle(title)
                 .setContentText(text)
                 .setAutoCancel(true);
+
+        // Create a direct intent to launch WeChat
+        Intent launchWeChat = getPackageManager().getLaunchIntentForPackage(WECHAT_PACKAGE);
+        if (launchWeChat != null) {
+            // Add flags to ensure it launches properly
+            launchWeChat.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            // Create a PendingIntent with a unique request code to prevent overwriting
+            PendingIntent pendingIntent;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(),
+                        launchWeChat, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            } else {
+                pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(),
+                        launchWeChat, PendingIntent.FLAG_UPDATE_CURRENT);
+            }
+
+            // Set it as the contentIntent
+            builder.setContentIntent(pendingIntent);
+            Log.d(TAG, "Set direct WeChat launch intent for sound notification");
+        } else {
+            Log.e(TAG, "Could not create intent to launch WeChat");
+        }
 
         int notificationId = (int) System.currentTimeMillis();
         notificationManager.notify(notificationId, builder.build());

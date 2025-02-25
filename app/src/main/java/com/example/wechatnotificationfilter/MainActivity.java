@@ -25,6 +25,8 @@ import java.util.Set;
 import org.json.JSONException;
 import org.json.JSONObject;
 import android.util.Log;
+import android.app.PendingIntent;
+import android.content.Intent;
 
 public class MainActivity extends AppCompatActivity {
     private EditText contactInput;
@@ -202,6 +204,21 @@ public class MainActivity extends AppCompatActivity {
             notificationManager.createNotificationChannel(channel);
         }
 
+        // Create an intent that would simulate opening WeChat
+        Intent intent = new Intent();
+        intent.setAction(Intent.ACTION_VIEW);
+        intent.setPackage("com.tencent.mm"); // WeChat package
+
+        // Create a pending intent
+        PendingIntent pendingIntent;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        } else {
+            pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+        }
+
         Notification.Builder builder;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             builder = new Notification.Builder(this, "test_channel");
@@ -212,6 +229,7 @@ public class MainActivity extends AppCompatActivity {
         builder.setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(contactName)
                 .setContentText("Test message from " + contactName)
+                .setContentIntent(pendingIntent)
                 .setAutoCancel(true);
 
         notificationManager.notify(1, builder.build());
