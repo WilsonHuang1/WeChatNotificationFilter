@@ -33,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
     private ArrayAdapter<String> adapter;
     private SharedPreferences prefs;
     private JSONObject contactSounds;
+    private static final String TAG = "WeChatFilter";
 
     private static final int PICK_RINGTONE_REQUEST = 1;
     private String currentContact;
@@ -67,6 +68,8 @@ public class MainActivity extends AppCompatActivity {
         Set<String> savedContacts = prefs.getStringSet("contacts", new HashSet<>());
         contacts = new ArrayList<>(savedContacts);
 
+        Log.d(TAG, "Loaded contacts list on app start: " + contacts.toString());
+
         // Load contact sounds
         loadContactSounds();
 
@@ -83,6 +86,12 @@ public class MainActivity extends AppCompatActivity {
                 adapter.notifyDataSetChanged();
                 saveContacts();
                 contactInput.setText("");
+                Log.d(TAG, "Added contact to priority list: " + name);
+                Log.d(TAG, "Updated contacts list: " + contacts.toString());
+                Toast.makeText(this, "Added: " + name, Toast.LENGTH_SHORT).show();
+
+                // Restart the service to ensure it picks up the new contact
+                restartNotificationService();
             }
         });
 
@@ -99,17 +108,24 @@ public class MainActivity extends AppCompatActivity {
 
         // Long press to remove contact
         contactsList.setOnItemLongClickListener((parent, view, position, id) -> {
+            String removedContact = contacts.get(position);
             contacts.remove(position);
             adapter.notifyDataSetChanged();
             saveContacts();
-            Toast.makeText(MainActivity.this, "Contact removed", Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Removed contact from priority list: " + removedContact);
+            Log.d(TAG, "Updated contacts list: " + contacts.toString());
+            Toast.makeText(MainActivity.this, "Removed: " + removedContact, Toast.LENGTH_SHORT).show();
+
+            // Restart the service to ensure it picks up the removed contact
+            restartNotificationService();
             return true;
         });
 
         // Click to set custom sound
         contactsList.setOnItemClickListener((parent, view, position, id) -> {
-            Toast.makeText(MainActivity.this, "Tapped: " + contacts.get(position), Toast.LENGTH_SHORT).show();
             currentContact = contacts.get(position);
+            Toast.makeText(MainActivity.this, "Setting sound for: " + currentContact, Toast.LENGTH_SHORT).show();
+
             Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION);
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Sound for " + currentContact);
@@ -129,6 +145,14 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void restartNotificationService() {
+        Log.d(TAG, "Restarting notification service to apply changes");
+        // Force reload the service to pick up changes
+        Intent serviceIntent = new Intent(this, WeChatNotificationService.class);
+        stopService(serviceIntent);
+        startService(serviceIntent);
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -139,29 +163,27 @@ public class MainActivity extends AppCompatActivity {
                 if (ringtoneUri != null) {
                     // Log the selected URI
                     String uriString = ringtoneUri.toString();
-                    Log.d("WeChatFilter", "Selected sound URI: " + uriString + " for contact: " + currentContact);
+                    Log.d(TAG, "Selected sound URI: " + uriString + " for contact: " + currentContact);
 
                     // Save the selected sound for this contact
                     try {
                         contactSounds.put(currentContact, uriString);
                         saveContactSounds();
                         WeChatNotificationService.saveContactSound(this, currentContact, uriString);
-                        Toast.makeText(this, "Sound set for " + currentContact + ": " + uriString, Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, "Sound set for " + currentContact, Toast.LENGTH_SHORT).show();
 
-                        // Force reload the service to pick up the new sound
-                        Intent serviceIntent = new Intent(this, WeChatNotificationService.class);
-                        stopService(serviceIntent);
-                        startService(serviceIntent);
+                        // Restart the service to pick up the new sound
+                        restartNotificationService();
                     } catch (JSONException e) {
                         e.printStackTrace();
                         Toast.makeText(this, "Error saving sound", Toast.LENGTH_SHORT).show();
                     }
                 } else {
-                    Log.d("WeChatFilter", "No ringtone selected (null URI)");
+                    Log.d(TAG, "No ringtone selected (null URI)");
                     Toast.makeText(this, "No sound selected", Toast.LENGTH_SHORT).show();
                 }
             } else {
-                Log.d("WeChatFilter", "Sound selection canceled");
+                Log.d(TAG, "Sound selection canceled");
                 Toast.makeText(this, "Sound selection canceled", Toast.LENGTH_SHORT).show();
             }
         }
@@ -194,6 +216,7 @@ public class MainActivity extends AppCompatActivity {
 
         notificationManager.notify(1, builder.build());
         Toast.makeText(this, "Test notification sent", Toast.LENGTH_SHORT).show();
+        Log.d(TAG, "Test notification sent for contact: " + contactName);
     }
 
     private boolean isNotificationServiceEnabled() {
@@ -210,6 +233,7 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences.Editor editor = prefs.edit();
         editor.putStringSet("contacts", new HashSet<>(contacts));
         editor.apply();
+        Log.d(TAG, "Saved contacts list to shared preferences: " + contacts.toString());
     }
 
     private void loadContactSounds() {
@@ -218,8 +242,10 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             contactSounds = new JSONObject(soundsJson);
+            Log.d(TAG, "Loaded contact sounds: " + contactSounds.toString());
         } catch (JSONException e) {
             contactSounds = new JSONObject();
+            Log.e(TAG, "Error loading contact sounds", e);
         }
     }
 
@@ -230,6 +256,6 @@ public class MainActivity extends AppCompatActivity {
         editor.apply();
 
         // Log the saved sounds for debugging
-        Log.d("WeChatFilter", "Saved contact sounds: " + contactSounds.toString());
+        Log.d(TAG, "Saved contact sounds: " + contactSounds.toString());
     }
 }
